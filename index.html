@@ -509,9 +509,9 @@
     <section id="reportsListView" style="display: none;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h2 style="font-size: 1.2rem; font-weight: 700;">כל הפניות</h2>
-        <button id="btnExportExcel" class="btn btn-secondary" style="margin: 12px 0; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+        <button id="btnExportExcel" type="button" onclick="exportAndShareReports()" class="btn btn-secondary" style="margin: 12px 0; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
           <span>📤</span>
-          <span>ייצוא ושיתוף לאקסל (SharePoint/OneDrive)</span>
+          <span>ייצוא ושיתוף לאקסל (CSV)</span>
         </button>
       </div>
 
@@ -1217,12 +1217,11 @@
     // ... כל שאר הפונקציות הקיימות (כמו showToast, applyFiltersAndRender וכו') ...
 
     /* ========================================================
-       מודול ייצוא ושיתוף דיווחים (CSV / Excel + Web Share API)
-       ======================================================== */
+    מודול ייצוא CSV ותמיכה בשיתוף
+    ======================================================== */
     function escapeCSV(val) {
       if (val === null || val === undefined) return '""';
-      let str = String(val);
-      str = str.replace(/"/g, '""');
+      let str = String(val).replace(/"/g, '""');
       return `"${str}"`;
     }
 
@@ -1265,61 +1264,71 @@
     }
 
     function triggerLocalDownload(blob, fileName) {
-      const url = URL.createObjectURL(blob);
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
+      a.style.display = 'none';
       a.href = url;
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 1000);
     }
 
     async function exportAndShareReports() {
       try {
         const reports = await db.reports.toArray();
         if (!reports || reports.length === 0) {
-          showToast('אין דיווחים לייצוא');
+          alert('אין עדיין פניות שמורות במכשיר לייצוא.');
           return;
         }
 
         const csvData = generateCSVString(reports);
         const blob = new Blob(['\uFEFF' + csvData], { type: 'text/csv;charset=utf-8;' });
-
+        
         const today = new Date().toISOString().slice(0, 10);
-        const currentUser = (reports[0]?.userName || 'משתמש').replace(/[\/\\?%*:|"<>]/g, '_');
-        const fileName = `דוח_פניות_${currentUser}_${today}.csv`;
-        const file = new File([blob], fileName, { type: 'text/csv' });
+        const rawUser = reports[0]?.userName || 'דוח';
+        const cleanUser = rawUser.replace(/[^a-zA-Z0-9א-ת]/g, '_');
+        const fileName = `דוח_פניות_${cleanUser}_${today}.csv`;
 
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        let sharedSuccessfully = false;
+        if (navigator.share && navigator.canShare) {
           try {
-            await navigator.share({
-              files: [file],
-              title: 'ייצוא פניות שטח',
-              text: `מצורף קובץ דיווחים עבור ${currentUser} לתאריך ${today}`
-            });
-            showToast('הקובץ נשלח לשיתוף בהצלחה');
-          } catch (err) {
-            if (err.name !== 'AbortError') {
-              console.warn('שגיאה בשיתוף, מוריד מקומית:', err);
-              triggerLocalDownload(blob, fileName);
+            const file = new File([blob], fileName, { type: 'text/csv' });
+            if (navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                files: [file],
+                title: 'ייצוא פניות שטח',
+                text: `דוח פניות לקוח לתאריך ${today}`
+              });
+              sharedSuccessfully = true;
             }
+          } catch (shareErr) {
+            if (shareErr.name === 'AbortError') return;
           }
-        } else {
+        }
+
+        if (!sharedSuccessfully) {
           triggerLocalDownload(blob, fileName);
-          showToast('הקובץ הורד בהצלחה למחשב');
         }
       } catch (err) {
-        console.error('שגיאה בתהליך הייצוא:', err);
-        showToast('אירעה שגיאה בייצוא הקובץ');
+        alert('שגיאה בייצוא: ' + err.message);
       }
     }
 
-    // מאזין ללחיצה על הכפתור
-    const btnExport = document.getElementById('btnExportExcel');
-    if (btnExport) {
-      btnExport.addEventListener('click', exportAndShareReports);
-    }
+    /* ========================================================
+      לוגיקת אתחול ופתיחת מסך פנייה חדשה בטעינה
+      ======================================================== */
+    document.addEventListener('DOMContentLoaded', () => {
+      // פתיחת מסך פנייה חדשה אוטומטית בעליית האפליקציה
+      if (typeof showView === 'function') {
+        showView('formView'); // או שם המסך של הטופס באפליקציה שלך
+      } else if (typeof openNewReportModal === 'function') {
+        openNewReportModal();
+      }
+    });
   </script>
 </body>
 </html>

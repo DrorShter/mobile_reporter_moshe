@@ -1,4 +1,4 @@
-const CACHE_NAME = 'client-reports-cache-v2.2';
+const CACHE_NAME = 'client-reports-cache-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
