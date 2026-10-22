@@ -463,8 +463,8 @@
           <div class="form-group">
             <label for="systemSelect">מערכת *</label>
             <select id="systemSelect" required>
-              <option value="כ">מערכת כ</option>
-              <option value="ק">מערכת ק</option>
+              <option value="כ">כ</option>
+              <option value="ק">ק</option>
             </select>
           </div>
         </div>
@@ -763,8 +763,7 @@
         requireFollowup: isFollowup,
         followupType: fType,
         followupDetails: fDetails,
-        isCompleted: false, // פנייה פתוחה כברירת מחדל
-        completionDetails: '',
+        isCompleted: !isFollowup, // אם לא נדרש המשך טיפול - הפנייה מוגדרת מיד כהושלמה        completionDetails: '',
         completionType: '',
         completedAt: null,
         createdAt: new Date().toISOString(),
@@ -1136,6 +1135,7 @@
             requireFollowup: isF,
             followupType: newFType,
             followupDetails: newFDetails,
+            isCompleted: !isF,
             synced: false
           });
 
