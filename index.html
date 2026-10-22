@@ -509,8 +509,9 @@
     <section id="reportsListView" style="display: none;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h2 style="font-size: 1.2rem; font-weight: 700;">כל הפניות</h2>
-        <button class="btn btn-primary" id="exportExcelBtn" style="padding: 7px 12px; font-size: 0.85rem;">
-          📊 ייצוא לאקסל
+        <button id="btnExportExcel" class="btn btn-secondary" style="margin: 12px 0; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <span>📤</span>
+          <span>ייצוא ושיתוף לאקסל (SharePoint/OneDrive)</span>
         </button>
       </div>
 
@@ -1150,13 +1151,13 @@
           applyFiltersAndRender();
         });
         document.getElementById('btnDeleteReport').addEventListener('click', async () => {
-          if (confirm(`האם אתה בטוח שברצונך למחוק את פנייה #${r.id} של ${r.caller}?`)) {
-            await db.reports.delete(r.id);
-            showToast('הפנייה נמחקה בהצלחה');
-            closeModal();
-            applyFiltersAndRender();
-          }
-        });
+        if (confirm(`האם אתה בטוח שברצונך למחוק את פנייה #${r.id} של ${r.caller}?`)) {
+          await db.reports.delete(r.id);
+          showToast('הפנייה נמחקה בהצלחה');
+          closeModal();
+          applyFiltersAndRender();
+        }
+      });
       }
     }
 
@@ -1212,6 +1213,112 @@
       showView('onboarding');
     } else {
       showView('form');
+    }
+    // ... כל שאר הפונקציות הקיימות (כמו showToast, applyFiltersAndRender וכו') ...
+
+    /* ========================================================
+       מודול ייצוא ושיתוף דיווחים (CSV / Excel + Web Share API)
+       ======================================================== */
+    function escapeCSV(val) {
+      if (val === null || val === undefined) return '""';
+      let str = String(val);
+      str = str.replace(/"/g, '""');
+      return `"${str}"`;
+    }
+
+    function generateCSVString(reports) {
+      const headers = [
+        'מזהה מקומי',
+        'מזהה סנכרון (UUID)',
+        'תאריך',
+        'שעה',
+        'גורם פונה',
+        'מערכת',
+        'תיאור הפנייה',
+        'נדרש המשך טיפול',
+        'סוג המשך טיפול',
+        'פירוט המשך טיפול',
+        'סטטוס',
+        'אופן השלמה',
+        'פירוט השלמה',
+        'מדווח'
+      ];
+
+      const rows = reports.map(r => [
+        escapeCSV(r.id),
+        escapeCSV(r.syncUuid || ''),
+        escapeCSV(r.date || ''),
+        escapeCSV(r.time || ''),
+        escapeCSV(r.caller || ''),
+        escapeCSV(r.system || ''),
+        escapeCSV(r.description || ''),
+        escapeCSV(r.requireFollowup ? 'כן' : 'לא'),
+        escapeCSV(r.followupType || ''),
+        escapeCSV(r.followupDetails || ''),
+        escapeCSV(r.isCompleted ? 'הושלמה' : 'פתוחה'),
+        escapeCSV(r.completionType || ''),
+        escapeCSV(r.completionDetails || ''),
+        escapeCSV(r.userName || '')
+      ]);
+
+      return [headers.join(','), ...rows.map(e => e.join(','))].join('\r\n');
+    }
+
+    function triggerLocalDownload(blob, fileName) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    async function exportAndShareReports() {
+      try {
+        const reports = await db.reports.toArray();
+        if (!reports || reports.length === 0) {
+          showToast('אין דיווחים לייצוא');
+          return;
+        }
+
+        const csvData = generateCSVString(reports);
+        const blob = new Blob(['\uFEFF' + csvData], { type: 'text/csv;charset=utf-8;' });
+
+        const today = new Date().toISOString().slice(0, 10);
+        const currentUser = (reports[0]?.userName || 'משתמש').replace(/[\/\\?%*:|"<>]/g, '_');
+        const fileName = `דוח_פניות_${currentUser}_${today}.csv`;
+        const file = new File([blob], fileName, { type: 'text/csv' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: 'ייצוא פניות שטח',
+              text: `מצורף קובץ דיווחים עבור ${currentUser} לתאריך ${today}`
+            });
+            showToast('הקובץ נשלח לשיתוף בהצלחה');
+          } catch (err) {
+            if (err.name !== 'AbortError') {
+              console.warn('שגיאה בשיתוף, מוריד מקומית:', err);
+              triggerLocalDownload(blob, fileName);
+            }
+          }
+        } else {
+          triggerLocalDownload(blob, fileName);
+          showToast('הקובץ הורד בהצלחה למחשב');
+        }
+      } catch (err) {
+        console.error('שגיאה בתהליך הייצוא:', err);
+        showToast('אירעה שגיאה בייצוא הקובץ');
+      }
+    }
+
+    // מאזין ללחיצה על הכפתור
+    const btnExport = document.getElementById('btnExportExcel');
+    if (btnExport) {
+      btnExport.addEventListener('click', exportAndShareReports);
     }
   </script>
 </body>
