@@ -459,7 +459,7 @@
             <datalist id="callersDatalist"></datalist>
           </div>
 
-          <!-- סעיף 2: שדה מערכת כ או ק -->
+          <!-- סעיף 2: שדה כ או ק -->
           <div class="form-group">
             <label for="systemSelect">מערכת *</label>
             <select id="systemSelect" required>
@@ -523,8 +523,8 @@
             <label>סינון לפי מערכת</label>
             <select id="filterSystem">
               <option value="all">כל המערכות</option>
-              <option value="כ">מערכת כ</option>
-              <option value="ק">מערכת ק</option>
+              <option value="כ">כ</option>
+              <option value="ק">ק</option>
             </select>
           </div>
           <div>
@@ -1053,8 +1053,8 @@
             <div class="form-group">
               <label>מערכת</label>
               <select id="mEditSystem">
-                <option value="כ" ${r.system === 'כ' ? 'selected' : ''}>מערכת כ</option>
-                <option value="ק" ${r.system === 'ק' ? 'selected' : ''}>מערכת ק</option>
+                <option value="כ" ${r.system === 'כ' ? 'selected' : ''}>כ</option>
+                <option value="ק" ${r.system === 'ק' ? 'selected' : ''}>ק</option>
               </select>
             </div>
           </div>

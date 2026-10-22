@@ -1,4 +1,4 @@
-const CACHE_NAME = 'client-reports-cache-v2.1';
+const CACHE_NAME = 'client-reports-cache-v2.2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -26,21 +26,23 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        return caches.open(CACHE_NAME).then((cache) => {
-          if (event.request.method === 'GET' && networkResponse.status === 200) {
+  // עבור דף ה-HTML: תמיד נסה להביא מהרשת קודם כדי לראות עדכונים מיד
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          return caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, networkResponse.clone());
-          }
-          return networkResponse;
-        });
-      });
-    }).catch(() => {
-      return caches.match('./index.html');
-    })
+            return networkResponse;
+          });
+        })
+        .catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  // עבור שאר המשאבים (ספריות ועיצוב)
+  event.respondWith(
+    caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
 });
