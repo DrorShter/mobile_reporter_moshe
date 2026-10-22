@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="פניות לקוח">
+  <title>דיווח פניות לקוח</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!-- ספריות Offline: Dexie עבור מסד נתונים IndexedDB, ו-SheetJS עבור יצירת אקסל -->
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #cbd5e1;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* סרגל עליון */
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+
+    .header-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .user-badge {
+      font-size: 0.85rem;
+      color: var(--primary);
+      background: #eff6ff;
+      padding: 4px 8px;
+      border-radius: 9999px;
+      max-width: 130px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* כפתור המבורגר */
+    .menu-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      width: 24px;
+      height: 18px;
+      padding: 0;
+    }
+
+    .menu-btn span {
+      display: block;
+      height: 3px;
+      width: 100%;
+      background: var(--text);
+      border-radius: 2px;
+    }
+
+    /* תפריט צדדי */
+    .drawer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 50;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    .drawer-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: -280px;
+      width: 260px;
+      height: 100%;
+      background: var(--card-bg);
+      z-index: 60;
+      box-shadow: -4px 0 12px rgba(0, 0, 0, 0.1);
+      transition: right 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 16px;
+    }
+
+    .drawer.open {
+      right: 0;
+    }
+
+    .drawer-header {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+
+    .drawer-links button {
+      width: 100%;
+      text-align: right;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      background: none;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .drawer-links button:hover, .drawer-links button:active {
+      background: #f1f5f9;
+    }
+
+    /* אזור תוכן ראשי */
+    main {
+      flex: 1;
+      padding: 16px;
+      max-width: 600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .form-row .form-group {
+      flex: 1;
+    }
+
+    label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #334155;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    input[type="time"],
+    textarea,
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 1rem;
+      background: #ffffff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--primary);
+    }
+
+    input:disabled, textarea:disabled, select:disabled {
+      background: #f8fafc;
+      color: #475569;
+      cursor: not-allowed;
+    }
+
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    /* כפתורי פעולה */
+    .btn {
+      padding: 12px 18px;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background-color 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    .btn-secondary:hover {
+      background: #cbd5e1;
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: #ffffff;
+    }
+
+    .btn-danger:hover {
+      background: var(--danger-hover);
+    }
+
+    .btn-full {
+      width: 100%;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .btn-group .btn {
+      flex: 1;
+    }
+
+    /* מסך רשימת דיווחים */
+    .reports-header-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .report-item {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .report-item:active {
+      background-color: #f8fafc;
+    }
+
+    .report-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .report-desc {
+      font-size: 0.95rem;
+      color: var(--text);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      line-height: 1.4;
+    }
+
+    .badge-followup {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: #fef3c7;
+      color: #b45309;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-top: 6px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--text-muted);
+    }
+
+    /* מודל צפייה ועריכה */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 70;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 520px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+
+    .view-row {
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .view-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .view-value {
+      font-size: 1rem;
+      color: var(--text);
+      margin-top: 2px;
+      white-space: pre-wrap;
+    }
+
+    /* הודעת חיווי מהירה */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1e293b;
+      color: #ffffff;
+      padding: 10px 20px;
+      border-radius: 9999px;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- סרגל עליון קבוע -->
+  <header>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <!-- כפתור המבורגר בצד ימין -->
+      <button class="menu-btn" id="menuBtn" aria-label="פתח תפריט">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <span class="header-title" id="pageTitle">דיווח פנייה חדשה</span>
+    </div>
+    <div class="user-badge" id="userBadgeHeader" style="display: none;"></div>
+  </header>
+
+  <!-- תפריט צד שנפתח מימין -->
+  <div class="drawer-overlay" id="drawerOverlay"></div>
+  <nav class="drawer" id="drawer">
+    <div class="drawer-header">תפריט אפשרויות</div>
+    <div class="drawer-links">
+      <button id="navNewReportBtn">
+        <span>📝</span> דיווח פנייה חדשה
+      </button>
+      <button id="navAllReportsBtn">
+        <span>📋</span> כל הדיווחים ואקסל
+      </button>
+      <button id="navSwitchUserBtn">
+        <span>👤</span> החלפת משתמש
+      </button>
+    </div>
+  </nav>
+
+  <!-- תוכן הדפים -->
+  <main>
+    <!-- מסך 1: הגדרת שם עובד לפעם ראשונה -->
+    <section id="onboardingView" class="card" style="display: none;">
+      <h2 class="card-title">ברוך הבא למערכת הדיווח</h2>
+      <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 20px;">
+        כדי שנוכל לשייך את הפניות שנשמרות, יש להזין את שמך (חד-פעמי במכשיר זה):
+      </p>
+      <div class="form-group">
+        <label for="userNameInput">שם העובד / המדווח *</label>
+        <input type="text" id="userNameInput" placeholder="לדוגמה: ישראל ישראלי" autocomplete="name">
+      </div>
+      <button class="btn btn-primary btn-full" id="saveUserBtn">כניסה למערכת</button>
+    </section>
+
+    <!-- מסך 2: טופס דיווח פנייה חדשה -->
+    <section id="reportFormView" class="card" style="display: none;">
+      <h2 class="card-title">דיווח פנייה מלקוח</h2>
+      <form id="newReportForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="reportDate">תאריך *</label>
+            <input type="date" id="reportDate" required>
+          </div>
+          <div class="form-group">
+            <label for="reportTime">שעה *</label>
+            <input type="time" id="reportTime" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="reportDesc">תיאור פנייה *</label>
+          <textarea id="reportDesc" placeholder="פרט את תוכן הפנייה, נושא הבקשה או שאלת הלקוח..." required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="requireFollowup">האם נדרש המשך טיפול? *</label>
+          <select id="requireFollowup">
+            <option value="no">לא</option>
+            <option value="yes">כן</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="followupDetailsGroup" style="display: none;">
+          <label for="followupDetails">פירוט המשך הטיפול הנדרש *</label>
+          <textarea id="followupDetails" placeholder="מה צריך לבצע, מול מי, ולמתי?"></textarea>
+        </div>
+
+        <div class="btn-group">
+          <button type="submit" class="btn btn-primary">שמור דיווח</button>
+          <button type="button" class="btn btn-secondary" id="cancelReportBtn">ביטול</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- מסך 3: דף כל הדיווחים -->
+    <section id="reportsListView" style="display: none;">
+      <div class="reports-header-actions">
+        <h2 style="font-size: 1.25rem; font-weight: 700;">כל הדיווחים</h2>
+        <button class="btn btn-primary" id="exportExcelBtn" style="padding: 8px 14px; font-size: 0.9rem;">
+          📊 ייצוא לאקסל
+        </button>
+      </div>
+      <div id="reportsContainer">
+        <!-- פריטי הדיווחים יוכנסו לכאן דינמית -->
+      </div>
+    </section>
+  </main>
+
+  <!-- מודל צפייה ועריכה -->
+  <div class="modal-overlay" id="detailModal">
+    <div class="modal-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 id="modalTitle" style="font-size: 1.2rem; font-weight: 700;">פרטי הדיווח</h3>
+        <button id="closeModalBtn" style="background: none; border: none; font-size: 1.4rem; cursor: pointer;">✕</button>
+      </div>
+
+      <div id="modalBody">
+        <!-- נבנה דינמית במצב קריאה או במצב עריכה -->
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">הפעולה בוצעה בהצלחה</div>
+
+  <script>
+    /* ========================================================
+       1. אתחול מסד נתונים IndexedDB מקומי עם Dexie.js
+       מבנה הרשומה כולל UUID ודגל סנכרון כהכנה לשרת עתידי
+       ======================================================== */
+    const db = new Dexie('ClientReportsDB');
+    db.version(1).stores({
+      reports: '++id, syncUuid, date, time, userName, requireFollowup, synced, createdAt'
+    });
+
+    let currentUserId = localStorage.getItem('reporter_name') || '';
+    let currentEditReport = null;
+    let isEditingMode = false;
+
+    // רכיבי DOM
+    const onboardingView = document.getElementById('onboardingView');
+    const reportFormView = document.getElementById('reportFormView');
+    const reportsListView = document.getElementById('reportsListView');
+    const pageTitle = document.getElementById('pageTitle');
+    const userBadgeHeader = document.getElementById('userBadgeHeader');
+    const drawer = document.getElementById('drawer');
+    const drawerOverlay = document.getElementById('drawerOverlay');
+    const menuBtn = document.getElementById('menuBtn');
+    const toast = document.getElementById('toast');
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    // ניהול תפריט
+    function toggleDrawer(open) {
+      if (open) {
+        drawer.classList.add('open');
+        drawerOverlay.classList.add('open');
+      } else {
+        drawer.classList.remove('open');
+        drawerOverlay.classList.remove('open');
+      }
+    }
+
+    menuBtn.addEventListener('click', () => toggleDrawer(true));
+    drawerOverlay.addEventListener('click', () => toggleDrawer(false));
+
+    /* ========================================================
+       2. ניתוב בין מסכים
+       ======================================================== */
+    function showView(viewName) {
+      toggleDrawer(false);
+      onboardingView.style.display = 'none';
+      reportFormView.style.display = 'none';
+      reportsListView.style.display = 'none';
+
+      if (!currentUserId && viewName !== 'onboarding') {
+        viewName = 'onboarding';
+      }
+
+      if (viewName === 'onboarding') {
+        pageTitle.textContent = 'הגדרת משתמש';
+        onboardingView.style.display = 'block';
+        userBadgeHeader.style.display = 'none';
+        document.getElementById('userNameInput').value = currentUserId || '';
+      } else if (viewName === 'form') {
+        pageTitle.textContent = 'דיווח פנייה חדשה';
+        reportFormView.style.display = 'block';
+        userBadgeHeader.textContent = currentUserId;
+        userBadgeHeader.style.display = 'block';
+        resetFormToNow();
+      } else if (viewName === 'list') {
+        pageTitle.textContent = 'כל הדיווחים';
+        reportsListView.style.display = 'block';
+        userBadgeHeader.textContent = currentUserId;
+        userBadgeHeader.style.display = 'block';
+        loadReportsList();
+      }
+    }
+
+    document.getElementById('navNewReportBtn').addEventListener('click', () => showView('form'));
+    document.getElementById('navAllReportsBtn').addEventListener('click', () => showView('list'));
+    document.getElementById('navSwitchUserBtn').addEventListener('click', () => showView('onboarding'));
+
+    /* ========================================================
+       3. ניהול משתמש ראשוני
+       ======================================================== */
+    document.getElementById('saveUserBtn').addEventListener('click', () => {
+      const name = document.getElementById('userNameInput').value.trim();
+      if (!name) {
+        alert('אנא הזן שם עובד');
+        return;
+      }
+      currentUserId = name;
+      localStorage.setItem('reporter_name', name);
+      showToast('המשתמש הוגדר בהצלחה');
+      showView('form');
+    });
+
+    /* ========================================================
+       4. טופס דיווח - תאריכים, זמנים ובדיקת איסור עתיד
+       ======================================================== */
+    const dateInput = document.getElementById('reportDate');
+    const timeInput = document.getElementById('reportTime');
+    const requireFollowupSelect = document.getElementById('requireFollowup');
+    const followupGroup = document.getElementById('followupDetailsGroup');
+    const followupInput = document.getElementById('followupDetails');
+
+    function getNowDateTimeStrings() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const min = String(now.getMinutes()).padStart(2, '0');
+      return {
+        dateStr: `${yyyy}-${mm}-${dd}`,
+        timeStr: `${hh}:${min}`,
+        fullDate: now
+      };
+    }
+
+    function resetFormToNow() {
+      const { dateStr, timeStr } = getNowDateTimeStrings();
+      dateInput.value = dateStr;
+      dateInput.max = dateStr; // מונע בחירת תאריך עתידי בלוח השנה
+      timeInput.value = timeStr;
+      document.getElementById('reportDesc').value = '';
+      requireFollowupSelect.value = 'no';
+      followupGroup.style.display = 'none';
+      followupInput.value = '';
+    }
+
+    requireFollowupSelect.addEventListener('change', (e) => {
+      if (e.target.value === 'yes') {
+        followupGroup.style.display = 'block';
+        followupInput.required = true;
+      } else {
+        followupGroup.style.display = 'none';
+        followupInput.required = false;
+        followupInput.value = '';
+      }
+    });
+
+    // בדיקת ולידציה שאינה מאפשרת דיווח עתידי
+    function isDateTimeInFuture(inputDate, inputTime) {
+      const selected = new Date(`${inputDate}T${inputTime}`);
+      const now = new Date();
+      return selected > now;
+    }
+
+    document.getElementById('newReportForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const selectedDate = dateInput.value;
+      const selectedTime = timeInput.value;
+
+      if (isDateTimeInFuture(selectedDate, selectedTime)) {
+        alert('לא ניתן לדווח על מועד עתידי. אנא בחר תאריך ושעה בעבר או בהווה.');
+        return;
+      }
+
+      const isFollowup = requireFollowupSelect.value === 'yes';
+      const followupText = isFollowup ? followupInput.value.trim() : '';
+
+      if (isFollowup && !followupText) {
+        alert('אנא פרט את המשך הטיפול הנדרש');
+        return;
+      }
+
+      // שמירה במסד נתונים IndexedDB
+      const reportItem = {
+        syncUuid: crypto.randomUUID ? crypto.randomUUID() : 'id_' + Date.now() + '_' + Math.random(),
+        userName: currentUserId,
+        date: selectedDate,
+        time: selectedTime,
+        description: document.getElementById('reportDesc').value.trim(),
+        requireFollowup: isFollowup,
+        followupDetails: followupText,
+        createdAt: new Date().toISOString(),
+        synced: false // שדה מפתח לסנכרון שרת עתידי
+      };
+
+      try {
+        await db.reports.add(reportItem);
+        showToast('הדיווח נשמר בהצלחה במכשיר');
+        resetFormToNow();
+        showView('list');
+      } catch (err) {
+        console.error(err);
+        alert('שגיאה בשמירת הדיווח המקומי');
+      }
+    });
+
+    document.getElementById('cancelReportBtn').addEventListener('click', () => {
+      if (confirm('האם לבטל את מילוי הטופס?')) {
+        resetFormToNow();
+      }
+    });
+
+    /* ========================================================
+       5. רשימת הדיווחים ומודל צפייה/עריכה
+       ======================================================== */
+    async function loadReportsList() {
+      const container = document.getElementById('reportsContainer');
+      container.innerHTML = '<div class="empty-state">טוען דיווחים...</div>';
+
+      const list = await db.reports.orderBy('date').reverse().toArray();
+
+      // מיון משני לפי שעה בסדר יורד
+      list.sort((a, b) => {
+        if (a.date !== b.date) return b.date.localeCompare(a.date);
+        return b.time.localeCompare(a.time);
+      });
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>אין דיווחים שמורים במכשיר עדיין.</p>
+            <button class="btn btn-secondary" onclick="showView('form')" style="margin-top: 12px;">צור דיווח חדש</button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = '';
+      list.forEach((item) => {
+        const itemEl = document.createElement('div');
+        itemEl.className = 'report-item';
+        itemEl.innerHTML = `
+          <div class="report-meta">
+            <span>📅 ${formatDateDisplay(item.date)} בשעה ${item.time}</span>
+            <span>👤 ${escapeHtml(item.userName)}</span>
+          </div>
+          <div class="report-desc">${escapeHtml(item.description)}</div>
+          ${item.requireFollowup ? `<span class="badge-followup">⚠️ נדרש המשך טיפול</span>` : ''}
+        `;
+        itemEl.addEventListener('click', () => openDetailModal(item.id));
+        container.appendChild(itemEl);
+      });
+    }
+
+    function formatDateDisplay(dStr) {
+      if (!dStr) return '';
+      const parts = dStr.split('-');
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // מודל צפייה ועריכה
+    const detailModal = document.getElementById('detailModal');
+    const modalBody = document.getElementById('modalBody');
+    const modalTitle = document.getElementById('modalTitle');
+    document.getElementById('closeModalBtn').addEventListener('click', () => closeModal());
+
+    function closeModal() {
+      detailModal.classList.remove('open');
+      currentEditReport = null;
+      isEditingMode = false;
+    }
+
+    async function openDetailModal(reportId) {
+      currentEditReport = await db.reports.get(reportId);
+      if (!currentEditReport) return;
+      isEditingMode = false;
+      renderModalContent();
+      detailModal.classList.add('open');
+    }
+
+    function renderModalContent() {
+      const rep = currentEditReport;
+      const { dateStr } = getNowDateTimeStrings();
+
+      if (!isEditingMode) {
+        modalTitle.textContent = 'פרטי הדיווח (נעול לעריכה)';
+        modalBody.innerHTML = `
+          <div class="view-row">
+            <div class="view-label">מדווח</div>
+            <div class="view-value">${escapeHtml(rep.userName)}</div>
+          </div>
+          <div class="view-row">
+            <div class="view-label">תאריך ושעה</div>
+            <div class="view-value">${formatDateDisplay(rep.date)} בשעה ${rep.time}</div>
+          </div>
+          <div class="view-row">
+            <div class="view-label">תיאור הפנייה</div>
+            <div class="view-value">${escapeHtml(rep.description)}</div>
+          </div>
+          <div class="view-row">
+            <div class="view-label">האם נדרש המשך טיפול?</div>
+            <div class="view-value">${rep.requireFollowup ? 'כן' : 'לא'}</div>
+          </div>
+          ${rep.requireFollowup ? `
+          <div class="view-row">
+            <div class="view-label">פירוט המשך הטיפול</div>
+            <div class="view-value">${escapeHtml(rep.followupDetails)}</div>
+          </div>` : ''}
+
+          <div class="btn-group" style="margin-top: 24px;">
+            <button class="btn btn-primary" id="startEditBtn">✏️ ערוך דיווח</button>
+            <button class="btn btn-secondary" onclick="closeModal()">סגור</button>
+          </div>
+        `;
+
+        document.getElementById('startEditBtn').addEventListener('click', () => {
+          isEditingMode = true;
+          renderModalContent();
+        });
+      } else {
+        modalTitle.textContent = 'עריכת דיווח';
+        modalBody.innerHTML = `
+          <div class="form-row">
+            <div class="form-group">
+              <label>תאריך</label>
+              <input type="date" id="editDate" value="${rep.date}" max="${dateStr}">
+            </div>
+            <div class="form-group">
+              <label>שעה</label>
+              <input type="time" id="editTime" value="${rep.time}">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>תיאור פנייה</label>
+            <textarea id="editDesc">${escapeHtml(rep.description)}</textarea>
+          </div>
+
+          <div class="form-group">
+            <label>האם נדרש המשך טיפול?</label>
+            <select id="editRequireFollowup">
+              <option value="no" ${!rep.requireFollowup ? 'selected' : ''}>לא</option>
+              <option value="yes" ${rep.requireFollowup ? 'selected' : ''}>כן</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="editFollowupGroup" style="display: ${rep.requireFollowup ? 'block' : 'none'};">
+            <label>פירוט המשך טיפול</label>
+            <textarea id="editFollowupDetails">${escapeHtml(rep.followupDetails || '')}</textarea>
+          </div>
+
+          <div class="btn-group">
+            <button class="btn btn-primary" id="saveEditBtn">שמור שינויים</button>
+            <button class="btn btn-secondary" id="cancelEditBtn">ביטול</button>
+          </div>
+        `;
+
+        const editSelect = document.getElementById('editRequireFollowup');
+        const editFollowGroup = document.getElementById('editFollowupGroup');
+        editSelect.addEventListener('change', (e) => {
+          editFollowGroup.style.display = e.target.value === 'yes' ? 'block' : 'none';
+        });
+
+        document.getElementById('cancelEditBtn').addEventListener('click', () => {
+          isEditingMode = false;
+          renderModalContent();
+        });
+
+        document.getElementById('saveEditBtn').addEventListener('click', async () => {
+          const newDate = document.getElementById('editDate').value;
+          const newTime = document.getElementById('editTime').value;
+          const newDesc = document.getElementById('editDesc').value.trim();
+          const newRequireFollowup = editSelect.value === 'yes';
+          const newFollowupText = newRequireFollowup ? document.getElementById('editFollowupDetails').value.trim() : '';
+
+          if (isDateTimeInFuture(newDate, newTime)) {
+            alert('לא ניתן לבחור תאריך או שעה עתידיים');
+            return;
+          }
+
+          if (!newDesc) {
+            alert('תיאור הפנייה אינו יכול להיות ריק');
+            return;
+          }
+
+          if (newRequireFollowup && !newFollowupText) {
+            alert('אנא הזן פירוט להמשך הטיפול');
+            return;
+          }
+
+          await db.reports.update(rep.id, {
+            date: newDate,
+            time: newTime,
+            description: newDesc,
+            requireFollowup: newRequireFollowup,
+            followupDetails: newFollowupText,
+            synced: false
+          });
+
+          showToast('הדיווח עודכן בהצלחה');
+          closeModal();
+          loadReportsList();
+        });
+      }
+    }
+
+    /* ========================================================
+       6. ייצוא קובץ Excel מובנה (SheetJS)
+       ======================================================== */
+    document.getElementById('exportExcelBtn').addEventListener('click', async () => {
+      const reports = await db.reports.orderBy('date').reverse().toArray();
+      if (reports.length === 0) {
+        alert('אין דיווחים לייצוא');
+        return;
+      }
+
+      // בניית שורות הדוח בפורמט אקסל עברי ומסודר
+      const dataForExcel = reports.map((r, index) => ({
+        'מספר סידורי': index + 1,
+        'תאריך': formatDateDisplay(r.date),
+        'שעה': r.time,
+        'שם המדווח': r.userName,
+        'תיאור הפנייה': r.description,
+        'נדרש המשך טיפול': r.requireFollowup ? 'כן' : 'לא',
+        'פירוט המשך טיפול': r.followupDetails || '-',
+        'תאריך רישום במערכת': new Date(r.createdAt).toLocaleString('he-IL'),
+        'קוד סנכרון': r.syncUuid
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
+      worksheet['!dir'] = 'rtl'; // הגדרת כיוון גיליון מימין לשמאל
+
+      // הגדרת רוחב עמודות מותאם לקריאה נוחה
+      worksheet['!cols'] = [
+        { wch: 12 }, // מס סידורי
+        { wch: 14 }, // תאריך
+        { wch: 10 }, // שעה
+        { wch: 18 }, // שם
+        { wch: 45 }, // תיאור פנייה
+        { wch: 18 }, // נדרש המשך
+        { wch: 35 }, // פירוט המשך
+        { wch: 22 }, // תאריך רישום
+        { wch: 38 }  // מזהה
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'דוח פניות לקוח');
+
+      const fileName = `דוח_פניות_לקוח_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+      showToast('קובץ האקסל יוצא ונשמר בהצלחה');
+    });
+
+    /* ========================================================
+       7. רישום ה-Service Worker להפעלת מצב Offline מלא
+       ======================================================== */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then((reg) => console.log('Service Worker נרשם בהצלחה:', reg.scope))
+          .catch((err) => console.log('שגיאה ברישום Service Worker:', err));
+      });
+    }
+
+    // הפעלה ראשונית של האפליקציה
+    if (!currentUserId) {
+      showView('onboarding');
+    } else {
+      showView('form');
+    }
+  </script>
+</body>
+</html>
