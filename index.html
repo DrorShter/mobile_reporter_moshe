@@ -511,7 +511,7 @@
         <h2 style="font-size: 1.2rem; font-weight: 700;">כל הפניות</h2>
         <button id="btnExportExcel" type="button" onclick="exportAndShareReports()" class="btn btn-secondary" style="margin: 12px 0; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
           <span>📤</span>
-          <span>ייצוא ושיתוף לאקסל (CSV)</span>
+          <span>ייצוא ושיתוף דוח אישי לאקסל</span>
         </button>
       </div>
 
@@ -954,7 +954,10 @@
           <div class="btn-group" style="flex-wrap: wrap;">
             ${!r.isCompleted ? `<button class="btn btn-success" id="btnGoComplete">✅ השלמת פנייה</button>` : `<button class="btn btn-secondary" id="btnReopen">פתח פנייה מחדש</button>`}
             <button class="btn btn-primary" id="btnGoEdit">✏️ ערוך</button>
-            <button class="btn btn-danger" id="btnDeleteReport">🗑️ מחק</button> <!-- כפתור מחיקה -->
+            // שימוש ב-deleteReport(${r.id}) ללא גרשיים מסביב ל-id כדי שיועבר כמספר
+            <button type="button" class="btn-delete" onclick="deleteReport(${r.id})">
+              🗑️ מחק
+            </button>
             <button class="btn btn-secondary" onclick="closeModal()">סגור</button>
           </div>
         `;
@@ -1217,118 +1220,193 @@
     // ... כל שאר הפונקציות הקיימות (כמו showToast, applyFiltersAndRender וכו') ...
 
     /* ========================================================
-    מודול ייצוא CSV ותמיכה בשיתוף
-    ======================================================== */
-    function escapeCSV(val) {
-      if (val === null || val === undefined) return '""';
-      let str = String(val).replace(/"/g, '""');
-      return `"${str}"`;
-    }
+   ייצוא נתונים אישיים לקובץ CSV (דורס קובץ קודם לפי שם עובד)
+   ======================================================== */
+  function escapeCSV(val) {
+    if (val === null || val === undefined) return '""';
+    let str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  }
 
-    function generateCSVString(reports) {
-      const headers = [
-        'מזהה מקומי',
-        'מזהה סנכרון (UUID)',
-        'תאריך',
-        'שעה',
-        'גורם פונה',
-        'מערכת',
-        'תיאור הפנייה',
-        'נדרש המשך טיפול',
-        'סוג המשך טיפול',
-        'פירוט המשך טיפול',
-        'סטטוס',
-        'אופן השלמה',
-        'פירוט השלמה',
-        'מדווח'
-      ];
+  function generateCSVString(reports) {
+    const headers = [
+      'מזהה מקומי',
+      'מזהה סנכרון (UUID)',
+      'תאריך',
+      'שעה',
+      'גורם פונה',
+      'מערכת',
+      'תיאור הפנייה',
+      'נדרש המשך טיפול',
+      'סוג המשך טיפול',
+      'פירוט המשך טיפול',
+      'סטטוס',
+      'אופן השלמה',
+      'פירוט השלמה',
+      'מדווח'
+    ];
 
-      const rows = reports.map(r => [
-        escapeCSV(r.id),
-        escapeCSV(r.syncUuid || ''),
-        escapeCSV(r.date || ''),
-        escapeCSV(r.time || ''),
-        escapeCSV(r.caller || ''),
-        escapeCSV(r.system || ''),
-        escapeCSV(r.description || ''),
-        escapeCSV(r.requireFollowup ? 'כן' : 'לא'),
-        escapeCSV(r.followupType || ''),
-        escapeCSV(r.followupDetails || ''),
-        escapeCSV(r.isCompleted ? 'הושלמה' : 'פתוחה'),
-        escapeCSV(r.completionType || ''),
-        escapeCSV(r.completionDetails || ''),
-        escapeCSV(r.userName || '')
-      ]);
+    const rows = reports.map(r => [
+      escapeCSV(r.id),
+      escapeCSV(r.syncUuid || ''),
+      escapeCSV(r.date || ''),
+      escapeCSV(r.time || ''),
+      escapeCSV(r.caller || ''),
+      escapeCSV(r.system || ''),
+      escapeCSV(r.description || ''),
+      escapeCSV(r.requireFollowup ? 'כן' : 'לא'),
+      escapeCSV(r.followupType || ''),
+      escapeCSV(r.followupDetails || ''),
+      escapeCSV(r.isCompleted ? 'הושלמה' : 'פתוחה'),
+      escapeCSV(r.completionType || ''),
+      escapeCSV(r.completionDetails || ''),
+      escapeCSV(r.userName || '')
+    ]);
 
-      return [headers.join(','), ...rows.map(e => e.join(','))].join('\r\n');
-    }
+    return [headers.join(','), ...rows.map(e => e.join(','))].join('\r\n');
+  }
 
-    function triggerLocalDownload(blob, fileName) {
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-      }, 1000);
-    }
+  function triggerLocalDownload(blob, fileName) {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }, 1000);
+  }
 
-    async function exportAndShareReports() {
-      try {
-        const reports = await db.reports.toArray();
-        if (!reports || reports.length === 0) {
-          alert('אין עדיין פניות שמורות במכשיר לייצוא.');
-          return;
-        }
-
-        const csvData = generateCSVString(reports);
-        const blob = new Blob(['\uFEFF' + csvData], { type: 'text/csv;charset=utf-8;' });
-        
-        const today = new Date().toISOString().slice(0, 10);
-        const rawUser = reports[0]?.userName || 'דוח';
-        const cleanUser = rawUser.replace(/[^a-zA-Z0-9א-ת]/g, '_');
-        const fileName = `דוח_פניות_${cleanUser}_${today}.csv`;
-
-        let sharedSuccessfully = false;
-        if (navigator.share && navigator.canShare) {
-          try {
-            const file = new File([blob], fileName, { type: 'text/csv' });
-            if (navigator.canShare({ files: [file] })) {
-              await navigator.share({
-                files: [file],
-                title: 'ייצוא פניות שטח',
-                text: `דוח פניות לקוח לתאריך ${today}`
-              });
-              sharedSuccessfully = true;
-            }
-          } catch (shareErr) {
-            if (shareErr.name === 'AbortError') return;
-          }
-        }
-
-        if (!sharedSuccessfully) {
-          triggerLocalDownload(blob, fileName);
-        }
-      } catch (err) {
-        alert('שגיאה בייצוא: ' + err.message);
+  async function exportAndShareReports() {
+    try {
+      const reports = await db.reports.toArray();
+      if (!reports || reports.length === 0) {
+        alert('אין עדיין פניות שמורות במכשיר לייצוא.');
+        return;
       }
+
+      const csvData = generateCSVString(reports);
+      const blob = new Blob(['\uFEFF' + csvData], { type: 'text/csv;charset=utf-8;' });
+
+      // שם קובץ מבוסס שם העובד בלבד כדי לאפשר דריסה של הדוח הקודם באותה תיקייה
+      const rawUser = reports[0]?.userName || 'עובד';
+      const cleanUser = rawUser.replace(/[^a-zA-Z0-9א-ת]/g, '_');
+      const fileName = `דוח_פניות_${cleanUser}.csv`;
+
+      // ניסיון שיתוף דרך מנגנון המכשיר (פותח אפשרות שמירה ישירה ל-OneDrive/SharePoint)
+      if (navigator.share && navigator.canShare) {
+        try {
+          const file = new File([blob], fileName, { type: 'text/csv' });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'ייצוא פניות שטח',
+              text: `דוח פניות עבור ${cleanUser}`
+            });
+            return;
+          }
+        } catch (shareErr) {
+          if (shareErr.name === 'AbortError') return; // המשתמש ביטל את החלון
+        }
+      }
+
+      // ברירת מחדל אם שיתוף לא נתמך (למשל בדפדפן במחשב)
+      triggerLocalDownload(blob, fileName);
+    } catch (err) {
+      alert('שגיאה בייצוא: ' + err.message);
     }
+  }
 
     /* ========================================================
       לוגיקת אתחול ופתיחת מסך פנייה חדשה בטעינה
       ======================================================== */
-    document.addEventListener('DOMContentLoaded', () => {
-      // פתיחת מסך פנייה חדשה אוטומטית בעליית האפליקציה
-      if (typeof showView === 'function') {
-        showView('formView'); // או שם המסך של הטופס באפליקציה שלך
-      } else if (typeof openNewReportModal === 'function') {
-        openNewReportModal();
+    window.addEventListener('load', () => {
+      const modal = document.getElementById('reportModal') || document.getElementById('newReportModal') || document.getElementById('modal');
+      if (modal) {
+        modal.classList.add('active');
+        modal.style.display = 'flex';
+      }
+
+      if (typeof openModal === 'function') {
+        openModal();
+      } else if (typeof showNewReportForm === 'function') {
+        showNewReportForm();
+      }
+
+      const formSection = document.getElementById('formView') || document.getElementById('formSection');
+      const listSection = document.getElementById('listView') || document.getElementById('reportsContainer');
+      if (formSection && listSection) {
+        formSection.style.display = 'block';
+        listSection.style.display = 'none';
       }
     });
+    /* פתיחה אוטומטית של טופס פנייה חדשה עם עליית הדף */
+    window.addEventListener('DOMContentLoaded', () => {
+      // נסה לאתר את הכפתור הרגיל של פתיחת הטופס וללחוץ עליו
+      const openBtn = 
+        document.getElementById('btnNewReport') || 
+        document.getElementById('btnOpenModal') || 
+        document.querySelector('.fab') || 
+        document.querySelector('[data-action="new-report"]');
+
+      if (openBtn) {
+        openBtn.click();
+        return;
+      }
+
+      // חלופה למקרה שהטופס מנוהל כאלמנט מודל ישיר
+      const modal = document.getElementById('reportModal') || document.getElementById('modal');
+      if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+      }
+    });
+    /* ========================================================
+   פונקציית מחיקת פנייה (מטפלת בהמרת מספר ורענון תצוגה)
+   ======================================================== */
+    window.deleteReport = async function(id) {
+      // וידוא שהמשתמש באמת התכוון למחוק
+      const confirmed = confirm('האם אתה בטוח שברצונך למחוק פנייה זו?');
+      if (!confirmed) return;
+
+      try {
+        // קריטי: המרת המזהה למספר שלם - Dexie לא מוחק אם מועבר מחרוזת
+        const numericId = Number(id);
+        if (isNaN(numericId)) {
+          console.error('מזהה פנייה לא תקין:', id);
+          return;
+        }
+
+        // מחיקה מ-IndexedDB
+        await db.reports.delete(numericId);
+
+        if (typeof showToast === 'function') {
+          showToast('הפנייה נמחקה בהצלחה');
+        }
+
+        // רענון מיידי של רשימת הפניות על המסך
+        if (typeof loadAndRenderReports === 'function') {
+          loadAndRenderReports();
+        } else if (typeof renderReports === 'function') {
+          renderReports();
+        } else if (typeof applyFiltersAndRender === 'function') {
+          applyFiltersAndRender();
+        } else {
+          // חלופת ברירת מחדל: טעינה מחדש של הרשימה מהמסד
+          const updatedReports = await db.reports.toArray();
+          const container = document.getElementById('reportsContainer') || document.getElementById('reportsList');
+          if (container && typeof buildReportsHTML === 'function') {
+            container.innerHTML = buildReportsHTML(updatedReports);
+          }
+        }
+      } catch (err) {
+        console.error('שגיאה בעת מחיקת פנייה:', err);
+        alert('שגיאה במחיקה: ' + err.message);
+      }
+    };
   </script>
 </body>
 </html>
