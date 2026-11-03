@@ -1273,10 +1273,15 @@
         const csvData = generateCSVString(reports);
         const blob = new Blob(['\uFEFF' + csvData], { type: 'text/csv;charset=utf-8;' });
         
+        // יצירת חותמת זמן: YYYY-MM-DD_HH-mm
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const timeStamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+
         const rawUser = currentUserId || reports[0]?.userName || 'עובד';
         const cleanUser = rawUser.replace(/[^a-zA-Z0-9א-ת]/g, '_');
-        const fileName = `דוח_פניות_${cleanUser}.csv`;
-
+        // שם קובץ ייחודי שמתקבל תמיד ב-OneDrive ללא שגיאות
+        const fileName = `דוח_פניות_${cleanUser}_${timeStamp}.csv`;
         let sharedSuccessfully = false;
         if (navigator.share && navigator.canShare) {
           try {
